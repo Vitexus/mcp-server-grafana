@@ -1,0 +1,2 @@
+# Upstream is a Go program built with CGO_ENABLED=0: a static binary is intended.
+mcp-server-grafana: statically-linked-binary [usr/lib/mcp-server-grafana/mcp-grafana]

@@ -1,0 +1,33 @@
+Source: mcp-server-grafana
+Section: utils
+Priority: optional
+Maintainer: Vítězslav Dvořák <info@vitexsoftware.cz>
+Build-Depends: debhelper-compat (= 13),
+ golang-1.26-go (>= 1.26.10),
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+Homepage: https://github.com/grafana/mcp-grafana
+Vcs-Git: https://github.com/Vitexus/mcp-server-grafana.git
+Vcs-Browser: https://github.com/Vitexus/mcp-server-grafana
+
+Package: mcp-server-grafana
+Architecture: any
+Depends: ${misc:Depends},
+Description: MCP server for Grafana dashboards, datasources and alerting
+ Model Context Protocol (MCP) server giving AI assistants access to a Grafana
+ instance: search and manage dashboards, query Prometheus, Loki and other
+ datasources, inspect alert rules, incidents, annotations and more.
+ .
+ This is a packaged build of the upstream grafana/mcp-grafana project. The
+ /usr/bin/mcp-server-grafana launcher honours GRAFANA_READ_ONLY=true by
+ starting the server with --disable-write.
+
+Package: mcprack-mcp-server-grafana
+Architecture: all
+Depends: ${misc:Depends},
+ mcprack (>= 1.6.0),
+ mcp-server-grafana (= ${binary:Version}),
+Description: Registers Grafana MCP server into mcprack catalog
+ Companion package for mcp-server-grafana. Installing it registers
+ the mcp-server-grafana binary as an available MCP server in the local
+ mcprack instance; removing it unregisters it again.

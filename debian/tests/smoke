@@ -1,0 +1,4 @@
+#!/bin/sh
+# DEP-8 smoke test: spawn the installed server, do the MCP handshake, list tools.
+set -e
+mcprack server probe /usr/bin/mcp-server-grafana --set-env GRAFANA_READ_ONLY=true --set-env GRAFANA_URL=http://127.0.0.1:3000

@@ -1,0 +1,41 @@
+#!/usr/bin/make -f
+
+# Upstream needs Go >= 1.26.x, which trixie only has in trixie-backports
+# (golang-1.26-go, see debian/Jenkinsfile). Never let go fetch another toolchain.
+export GOTOOLCHAIN := local
+export CGO_ENABLED := 0
+GO := /usr/lib/go-1.26/bin/go
+PKG := github.com/grafana/mcp-grafana/v2
+VERSION := $(shell dpkg-parsechangelog -SVersion | sed 's/-[^-]*$$//; s/~.*//')
+
+# Keep every Go cache inside the build tree: HOME is not writable in pbuilder.
+export GOPATH := $(CURDIR)/debian/.gopath
+export GOCACHE := $(CURDIR)/debian/.gocache
+export GOFLAGS := -mod=readonly
+
+%:
+	dh $@
+
+# Upstream's Makefile (distclean/build/test) needs mise; never let dh call it.
+override_dh_auto_clean:
+
+override_dh_auto_configure:
+
+override_dh_auto_build:
+	$(GO) build -buildvcs=false -trimpath -ldflags "-s -w -X $(PKG).version=$(VERSION)" \
+	    -o debian/build/mcp-grafana ./cmd/mcp-grafana
+
+override_dh_auto_test:
+	# Upstream tests need network/Grafana; run them manually: go test ./...
+
+override_dh_auto_install:
+	install -D -m 0755 debian/build/mcp-grafana debian/mcp-server-grafana/usr/lib/mcp-server-grafana/mcp-grafana
+	install -D -m 0755 debian/mcp-server-grafana.sh debian/mcp-server-grafana/usr/bin/mcp-server-grafana
+	install -D -m 0644 assets/icon.png debian/mcp-server-grafana/usr/share/icons/hicolor/180x180/apps/cz.vitexsoftware.mcp-server-grafana.png
+
+override_dh_dwz:
+
+override_dh_clean:
+	-chmod -R u+w debian/.gopath 2>/dev/null
+	rm -rf debian/.gopath debian/.gocache debian/build
+	dh_clean

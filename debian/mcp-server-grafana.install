@@ -1,0 +1,2 @@
+debian/server.json usr/share/mcp-server-grafana/
+debian/cz.vitexsoftware.mcp-server-grafana.metainfo.xml usr/share/metainfo/

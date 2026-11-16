@@ -1,0 +1,11 @@
+mcp-server-grafana (2.3.0) unstable; urgency=medium
+
+  * Initial Debian packaging of upstream grafana/mcp-grafana v2.3.0
+    (fork: Vitexus/mcp-server-grafana, upstream base v2.3.0, synced 2026-11-16).
+  * Build with golang-1.26-go from trixie-backports (upstream requires Go 1.26).
+  * /usr/bin/mcp-server-grafana launcher: GRAFANA_READ_ONLY=true maps to
+    --disable-write.
+  * Add companion package mcprack-mcp-server-grafana registering the server in
+    the local mcprack catalog.
+
+ -- Vítězslav Dvořák <info@vitexsoftware.cz>  Mon, 16 Nov 2026 14:00:00 +0100

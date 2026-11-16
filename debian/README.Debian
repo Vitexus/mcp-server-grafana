@@ -1,0 +1,52 @@
+mcp-server-grafana for Debian
+=============================
+
+Packaged build of the upstream grafana/mcp-grafana server (Apache-2.0).
+Fork: https://github.com/Vitexus/mcp-server-grafana (upstream base v2.3.0,
+synced 2026-11-16).
+
+Installation
+------------
+
+    sudo apt install mcp-server-grafana             # the server
+    sudo apt install mcprack-mcp-server-grafana     # registers it in mcprack
+
+The server runs over stdio: /usr/bin/mcp-server-grafana.
+
+Configuration (environment)
+---------------------------
+
+Variable                        Secret  Meaning
+GRAFANA_URL                     no      Grafana URL (default http://localhost:3000)
+GRAFANA_SERVICE_ACCOUNT_TOKEN   yes     Service account token (recommended)
+GRAFANA_USERNAME                no      Basic auth user (alternative to token)
+GRAFANA_PASSWORD                yes     Basic auth password
+GRAFANA_ORG_ID                  no      Organization ID
+GRAFANA_EXTRA_HEADERS           no      JSON object with extra HTTP headers
+GRAFANA_ALLOWED_URLS            no      Allowlist of Grafana URLs
+GRAFANA_FORWARD_HEADERS         no      Request headers forwarded to Grafana
+GRAFANA_READ_ONLY               no      true = start with --disable-write
+GRAFANA_USAGE_STATS             no      disabled (Debian default) | enabled | log
+
+Read-only mode
+--------------
+
+GRAFANA_READ_ONLY=true makes the launcher start the server with
+--disable-write, so no create/update tools are registered. The mcprack
+companion package sets it by default. Further upstream flags (for example
+--disable-query or --enable-write-tools) can be passed as arguments.
+
+Usage statistics
+----------------
+
+Upstream reports anonymous usage statistics to Grafana Labs by default. The
+Debian launcher sets GRAFANA_USAGE_STATS=disabled unless you set it
+yourself (GRAFANA_USAGE_STATS=enabled to opt in, =log to inspect the payload).
+
+Build
+-----
+
+Upstream requires Go 1.26. On trixie it is built with golang-1.26-go from
+trixie-backports (enabled in debian/Jenkinsfile); GOTOOLCHAIN=local prevents
+any toolchain download. Go modules are fetched from the Go module proxy while
+building.

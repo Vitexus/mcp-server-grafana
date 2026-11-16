@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="console-application">
+  <id>cz.vitexsoftware.mcp-server-grafana</id>
+  <name>Grafana MCP Server</name>
+  <summary>MCP server for Grafana dashboards, datasources and alerting</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <developer id="cz.vitexsoftware"><name>VitexSoftware</name></developer>
+  <description>
+    <p>Model Context Protocol server giving AI assistants access to Grafana: dashboards, Prometheus and Loki queries, alert rules, incidents and annotations. Packaged build of the upstream grafana/mcp-grafana project.</p>
+  </description>
+  <icon type="stock">cz.vitexsoftware.mcp-server-grafana</icon>
+  <url type="homepage">https://github.com/grafana/mcp-grafana</url>
+  <url type="vcs-browser">https://github.com/Vitexus/mcp-server-grafana</url>
+  <url type="bugtracker">https://github.com/Vitexus/mcp-server-grafana/issues</url>
+  <content_rating type="oars-1.1"/>
+  <provides><binary>mcp-server-grafana</binary></provides>
+  <releases><release version="2.3.0" date="2026-11-16"/></releases>
+</component>

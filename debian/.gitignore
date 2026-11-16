@@ -1,0 +1,11 @@
+.gopath/
+.gocache/
+build/
+files
+debhelper-build-stamp
+*.substvars
+*.debhelper
+*.debhelper.log
+.debhelper/
+mcp-server-grafana/
+mcprack-mcp-server-grafana/
