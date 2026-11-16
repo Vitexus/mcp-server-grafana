@@ -1,12 +1,17 @@
 #!groovy
 
-// Current version of this Pipeline https://github.com/VitexSoftware/BuildImages/blob/main/Test/Jenkinsfile
+// Multi-architecture variant of https://github.com/VitexSoftware/BuildImages/blob/main/Test/Jenkinsfile
+// Same node-local build trees (no source stash, nothing built in the shared NFS
+// workspace), plus an architecture axis: every distro is built on every architecture
+// of the package. node(architecture) relies on the platformlabeler plugin labels.
 
 // Trixie only: Build-Depends golang-1.26-go (upstream needs Go >= 1.26.x) is
 // available just from trixie-backports, enabled below before the build.
 String[] distributions = [
 			'debian:trixie',
 ]
+
+String[] architectures = [] // inferred from debian/control: 'any' -> amd64 + arm64
 
 String vendor = 'vitexsoftware'
 //String distroFamily = ''
@@ -163,6 +168,38 @@ def localBuildTreeRelease(Map t) {
 }
 // --- end node-local workspace isolation -----------------------------------
 
+// --- Wait for the package repository ---------------------------------------
+// buildBlocker only keeps a job from *starting* while RebulidDEBRepoByAnsible
+// runs; a build that is already in flight still reaches `apt-get update` while
+// the repository is regenerated and gets 403 / missing Release or Packages.
+// The Jenkins API is not readable anonymously, so poll what apt actually needs:
+// InRelease plus every Packages.gz it lists for this architecture.
+def waitForRepo(String codename, String arch) {
+    if (!(codename ==~ /^[a-z0-9]+$/) || !(arch ==~ /^[a-z0-9]+$/)) { error("Invalid codename/arch: ${codename}/${arch}") }
+    timeout(time: 45, unit: 'MINUTES') {
+        waitUntil(initialRecurrence: 15000, quiet: true) {
+            withEnv(["WR_CODENAME=${codename}", "WR_ARCH=${arch}"]) {
+                def rc = sh(returnStatus: true, script: '''
+                    set -u
+                    base="https://repo.vitexsoftware.com/dists/$WR_CODENAME"
+                    code=$(curl -s -o /tmp/inrelease.$$ -w '%{http_code}' --max-time 20 "$base/InRelease") || code=000
+                    if [ "$code" != 200 ]; then echo "repo not ready: InRelease -> $code"; rm -f /tmp/inrelease.$$; exit 1; fi
+                    idx=$(grep -oE "[A-Za-z0-9._-]+/binary-$WR_ARCH/Packages\\.gz" /tmp/inrelease.$$ | grep -v '^debian-installer/' | sort -u)
+                    rm -f /tmp/inrelease.$$
+                    if [ -z "$idx" ]; then echo "repo not ready: no $WR_ARCH indexes listed"; exit 1; fi
+                    for f in $idx; do
+                        code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$base/$f") || code=000
+                        if [ "$code" != 200 ]; then echo "repo not ready: $f -> $code"; exit 1; fi
+                    done
+                    echo "repo ready: $WR_CODENAME/$WR_ARCH"
+                ''')
+                return rc == 0
+            }
+        }
+    }
+}
+// --- end wait for the package repository -----------------------------------
+
 properties([
     copyArtifactPermission('*'),
     buildBlocker(
@@ -174,7 +211,7 @@ properties([
 ])
 
 def scmVars = [:]
-node('amd64') {
+node() {
     ansiColor('xterm') {
         stage('SCM Checkout') {
             // Run the one github.com checkout of this build on node-local disk,
@@ -188,6 +225,20 @@ node('amd64') {
                 // never contact github.com again on this node.
                 scmVars = checkout scm
                 seedNodeMirror(root, scmVars.GIT_URL, scmVars.GIT_COMMIT, pwd())
+                for (line in readFile(file: pwd() + '/debian/control').readLines()) {
+                    if (line.startsWith('Architecture:')) {
+                        def value = line.substring('Architecture:'.length()).trim()
+                        // 'armhf' is not offered: there is no armhf agent, so
+                        // node('armhf') would block forever and hang the build.
+                        def wanted = (value == 'any') ? ['amd64', 'arm64'] : (value == 'all') ? ['amd64'] : value.split(/\s+/).toList()
+                        // The value comes from the repository's debian/control and ends up
+                        // in node labels and build paths: accept known agents only.
+                        def allowed = ['amd64', 'arm64']
+                        wanted.each { a -> if (!(a in allowed)) { error("Unsupported Architecture '${a}' in debian/control") } }
+                        architectures = wanted
+                        break
+                    }
+                }
             }
         }
     }
@@ -198,9 +249,12 @@ String gitCommit = scmVars.GIT_COMMIT
 
 def branches = [:]
 distributions.each { distro ->
-    branches[distro] = {
+  architectures.each { arch ->
+    String branchKey = distro + '/' + arch
+    branches[branchKey] = {
         def distroName = distro
-        println  "Dist:" + distroName
+        def architecture = arch
+        println  "Dist:" + distroName + " Arch:" + architecture
 
         def dist = distroName.split(':')
         def distroFamily = dist[0]
@@ -209,13 +263,13 @@ distributions.each { distro ->
         def artifacts = []
         def buildVer = ''
 
-        node('amd64') {
+        node(architecture) {
             ansiColor('xterm') {
                 def root = nodeLocalRoot()
-                def buildId = localBuildId(distroCode)
+                def buildId = localBuildId(distroCode, architecture)
                 def t = null
                 try {
-                    stage('Checkout ' + distroName) {
+                    stage('Checkout ' + branchKey) {
                         // Bare `git fetch origin` has no Jenkins SSH creds. If this
                         // node was not the SCM bootstrap node, seed its mirror from
                         // a credentialed checkout on local disk first.
@@ -230,7 +284,7 @@ distributions.each { distro ->
                             fi
                         """, returnStdout: true).trim()
                         if (needSeed == 'yes') {
-                            ws(bootstrapWs(root) + '-seed-' + distroCode) {
+                            ws(bootstrapWs(root) + '-seed-' + distroCode + '-' + architecture) {
                                 def sv = checkout scm
                                 seedNodeMirror(root, sv.GIT_URL, sv.GIT_COMMIT, pwd())
                             }
@@ -239,7 +293,8 @@ distributions.each { distro ->
                         echo "Node-local build tree: ${t.tree} (node ${env.NODE_NAME})"
                         buildImage = docker.image(vendor + '/' + distro)
                     }
-                    stage('Build ' + distroName) {
+                    stage('Build ' + branchKey) {
+                        waitForRepo(distroCode, architecture)
                         // -v mounts the node-local tree into the container; the
                         // shared NFS workspace is not used for building at all.
                         buildImage.inside('-v ' + t.base + ':' + t.base) {
@@ -296,7 +351,9 @@ distributions.each { distro ->
                         }
                     }
 
-                    stage('Test ' + distroName) {
+                    stage('Test ' + branchKey) {
+                        // The repository may be regenerated while we were building.
+                        waitForRepo(distroCode, architecture)
                         buildImage.inside('-v ' + t.base + ':' + t.base) {
                             dir(t.tree) {
                                 def debconf_debug = 0 //Set to "5" or "developer" to debug debconf
@@ -306,9 +363,7 @@ distributions.each { distro ->
                                     sh 'sudo apt-get update --allow-releaseinfo-change'
                                     sh 'echo "INSTALATION"'
 
-                                    def installOrder = [
-                                        'multiflexi-sqlite',
-                                    ]
+                                    def installOrder = []
 
                                     def sorted_artifacts = artifacts.toList()
 
@@ -350,7 +405,7 @@ distributions.each { distro ->
                             }
                         }
                     }
-                    stage('Archive artifacts ' + distroName ) {
+                    stage('Archive artifacts ' + branchKey) {
                         // archiveArtifacts can only reach files under $WORKSPACE,
                         // so stage them into a per-build subdirectory there. The
                         // subdirectory name carries job, build, distro, node and
@@ -385,7 +440,7 @@ distributions.each { distro ->
                         }
                     }
                 } finally {
-                    stage('Cleanup ' + distroName) {
+                    stage('Cleanup ' + branchKey) {
                         sh '''
                             rm -rf "/tmp/debhelper-build-''' + buildId + '''" || true
                             rm -rf "/tmp/build-''' + buildId + '''" || true
@@ -396,6 +451,7 @@ distributions.each { distro ->
             }
         }
     }
+  }
 }
 
 parallel branches
